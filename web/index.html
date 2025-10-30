@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Screen Viewer</title>
+</head>
+<body>
+  <h2>Screen Viewer</h2>
+  <video id="remoteVideo" autoplay playsinline style="width:90%; border:2px solid black;"></video>
+
+  <script>
+    const video = document.getElementById('remoteVideo');
+    const pc = new RTCPeerConnection();
+    const ws = new WebSocket('wss://YOUR_RENDER_SERVER_URL'); // replace after deployment
+
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'register', role: 'viewer' }));
+
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === 'offer') {
+        await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, target: 'streamer' }));
+      }
+
+      if (data.type === 'candidate') {
+        try {
+          await pc.addIceCandidate(data.candidate);
+        } catch (e) {
+          console.error('Error adding ICE', e);
+        }
+      }
+    };
+
+    pc.ontrack = (event) => {
+      video.srcObject = event.streams[0];
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, target: 'streamer' }));
+      }
+    };
+  </script>
+</body>
+</html>
